@@ -65,7 +65,7 @@ type ReactComponentAttribute(?exportDefault: bool, ?import: string, ?from:string
         let reactElType = expr.Type
         let membArgs = memb.CurriedParameterGroups |> List.concat
         match expr with
-        | Call(callee, info, _typeInfo, _range) ->
+        | Call(callee, info, _typeInfo, range) ->
             let reactComponent =
                 match import, from with
                 | Some importedMember, Some externalModule ->
@@ -111,13 +111,24 @@ type ReactComponentAttribute(?exportDefault: bool, ?import: string, ?from:string
                     | None -> reactEl
                     | Some(ident, value) -> Let(ident, value, reactEl)                
                 
-                match [|memo, callee|] with
+                match memo, callee with
                 // If the call is memo and the function has an identifier, we can set the displayName
-                | [|(Some true), (IdentExpr i)|] -> 
+                | Some true, IdentExpr i ->
                     Sequential [
-                        (AstUtils.makeSet (IdentExpr(i)) "displayName" (AstUtils.makeStrConst i.Name))
+                        (AstUtils.makeSet callee "displayName" (AstUtils.makeStrConst i.Name))
                         expr
                     ]
+
+                | Some true, Import(i, _, _) ->
+                    Sequential [
+                        (AstUtils.makeSet callee "displayName" (AstUtils.makeStrConst i.Selector))
+                        expr
+                    ]
+
+                | Some true, _ ->
+                    compiler.LogWarning("React component has no identifier or import. Component displayName will not be set.", ?range = range)
+                    expr
+
                 | _ -> expr
         | _ ->
             // return expression as is when it is not a call expression
